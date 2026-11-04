@@ -1,0 +1,98 @@
+name: Android
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build debug APK
+        run: ./gradlew --no-daemon assembleDebug
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: formbricks-kiosk-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+
+  # Boots an Android tablet emulator on the GitHub runner (which has KVM),
+  # clicks through the kiosk and uploads screenshots + a screen recording.
+  emulator-demo:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: formbricks-kiosk-apk
+          path: apk
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run on emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_c
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: bash scripts/emulator-demo.sh apk/app-debug.apk demo-output
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: emulator-demo
+          path: demo-output
+
+  # Optional: publishes the APK to Appetize.io so anyone can use the app in a
+  # browser. Add an APPETIZE_API_TOKEN repository secret to turn this on, and
+  # optionally an APPETIZE_PUBLIC_KEY variable to keep updating the same app link.
+  appetize:
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    env:
+      APPETIZE_API_TOKEN: ${{ secrets.APPETIZE_API_TOKEN }}
+      APPETIZE_PUBLIC_KEY: ${{ vars.APPETIZE_PUBLIC_KEY }}
+    steps:
+      - uses: actions/download-artifact@v4
+        if: env.APPETIZE_API_TOKEN != ''
+        with:
+          name: formbricks-kiosk-apk
+          path: apk
+
+      - name: Upload to Appetize
+        if: env.APPETIZE_API_TOKEN != ''
+        run: |
+          url="https://api.appetize.io/v1/apps"
+          if [ -n "$APPETIZE_PUBLIC_KEY" ]; then url="$url/$APPETIZE_PUBLIC_KEY"; fi
+          response=$(curl -fsS "$url" \
+            -H "X-API-KEY: $APPETIZE_API_TOKEN" \
+            -F "file=@apk/app-debug.apk" \
+            -F "platform=android" \
+            -F "note=${GITHUB_REPOSITORY}@${GITHUB_SHA::7}")
+          public_url=$(echo "$response" | jq -r '.publicURL // empty')
+          echo "Appetize response: $response"
+          {
+            echo "### Try it in your browser"
+            echo ""
+            echo "$public_url?device=pixelc&orientation=landscape"
+          } >> "$GITHUB_STEP_SUMMARY"
