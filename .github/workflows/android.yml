@@ -31,6 +31,8 @@ jobs:
   emulator-demo:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -61,6 +63,26 @@ jobs:
         with:
           name: emulator-demo
           path: demo-output
+
+      # Also publish the screenshots to the `ci-demo` branch so they can be
+      # viewed on GitHub without downloading the artifact zip.
+      - name: Publish screenshots to ci-demo branch
+        if: always() && github.event_name == 'push'
+        run: |
+          [ -d demo-output ] || exit 0
+          dir="runs/${GITHUB_REF_NAME//\//-}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git fetch -q origin ci-demo:ci-demo; then git switch ci-demo; else git switch --orphan ci-demo; fi
+          rm -rf "$dir" && mkdir -p "$dir" && cp demo-output/* "$dir"/
+          {
+            echo "# Emulator demo: ${GITHUB_REF_NAME} @ ${GITHUB_SHA::7}"
+            echo
+            for f in "$dir"/*.png; do echo "![$(basename "$f")]($(basename "$f"))"; done
+          } > "$dir/README.md"
+          git add runs
+          git commit -qm "Emulator demo for ${GITHUB_SHA::7}" || exit 0
+          git push origin ci-demo
 
   # Optional: publishes the APK to Appetize.io so anyone can use the app in a
   # browser. Add an APPETIZE_API_TOKEN repository secret to turn this on, and

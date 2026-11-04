@@ -10,6 +10,17 @@ OUT=${2:-demo-output}
 PKG=com.formbricks.kiosk
 mkdir -p "$OUT"
 
+debug_dump() {
+  echo "---- uiautomator dump ----"
+  adb shell uiautomator dump /sdcard/ui.xml || true
+  adb exec-out cat /sdcard/ui.xml | tr '>' '\n' | grep -o 'text="[^"]*"\|content-desc="[^"]*"\|class="[^"]*"\|bounds="[^"]*"' | paste -sd' ' | fold -w 300 | head -60 || true
+  echo "---- top activity ----"
+  adb shell dumpsys activity activities | grep -E "mResumedActivity|topResumedActivity" || true
+  echo "---- crash log ----"
+  adb logcat -d -b crash | tail -60 || true
+  adb logcat -d | grep -E "AndroidRuntime|FATAL|formbricks" | tail -40 || true
+}
+
 shot() {
   adb exec-out screencap -p > "$OUT/$1.png"
   echo "saved $OUT/$1.png"
@@ -32,6 +43,7 @@ center_of() {
     sleep 1
   done
   echo "could not find $attr=\"$value\" on screen" >&2
+  debug_dump >&2
   return 1
 }
 
