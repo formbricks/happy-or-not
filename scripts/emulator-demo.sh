@@ -55,11 +55,15 @@ tap() {
 }
 
 adb install -r "$APK"
+# Skip Android's one-time "Viewing full screen" hint that covers the app.
+adb shell settings put secure immersive_mode_confirmations confirmed || true
 adb shell screenrecord --time-limit 90 /sdcard/demo.mp4 &
 sleep 1
 
 adb shell am start -W -n "$PKG/.MainActivity"
 sleep 4
+# Dismiss the full-screen hint if it still showed up.
+if xy=$(center_of text "Got it" 2>/dev/null); then adb shell input tap $xy; sleep 1; fi
 shot 01-survey
 
 tap content-desc "Very happy"
