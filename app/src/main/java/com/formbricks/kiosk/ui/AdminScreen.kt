@@ -43,6 +43,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
@@ -98,6 +100,35 @@ fun AdminScreen(vm: KioskViewModel) {
             TextButton(onClick = vm::refreshStats) { Text("Refresh") }
         }
 
+        // ---- Formbricks ----
+        Section("Formbricks connection") {
+            Text(
+                "Every answer is written to a Formbricks Feedback Dataset as feedback records, so it shows up in " +
+                    "your Formbricks dashboards next to all other feedback. Answers are queued on this device and " +
+                    "sent when online. Setup guide: github.com/formbricks/happy-or-not#send-feedback-to-formbricks",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Field("Formbricks URL", draft.formbricksHost) { draft = draft.copy(formbricksHost = it.trim()) }
+            Field("API key", draft.apiKey, secret = true) { draft = draft.copy(apiKey = it.trim()) }
+            Field("Dataset ID", draft.datasetId) { draft = draft.copy(datasetId = it.trim()) }
+            Field("Location name (e.g. Hamburg store, exit)", draft.locationName) { draft = draft.copy(locationName = it) }
+            Field("Kiosk ID", draft.kioskId) { draft = draft.copy(kioskId = it.trim()) }
+            if (draft != vm.settings) {
+                Text(
+                    "Save settings to use the changes.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+            if (vm.syncStatus.isNotBlank()) Text(vm.syncStatus, style = MaterialTheme.typography.bodyMedium)
+            vm.stats?.let { Text("${it.pendingSync} answers waiting to be sent", style = MaterialTheme.typography.bodyMedium) }
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedButton(onClick = vm::testConnection, enabled = vm.settings.syncEnabled) { Text("Test connection") }
+                OutlinedButton(onClick = vm::syncFromAdmin, enabled = vm.settings.syncEnabled) { Text("Sync now") }
+            }
+        }
+
         // ---- Survey content ----
         Section("Survey") {
             Field("Question", draft.question) { draft = draft.copy(question = it) }
@@ -109,25 +140,6 @@ fun AdminScreen(vm: KioskViewModel) {
             Field("Follow-up question", draft.followUpQuestion) { draft = draft.copy(followUpQuestion = it) }
             Field("Follow-up answers (one per line, up to 9)", reasonsText, singleLine = false) { reasonsText = it }
             Field("Admin PIN (4–8 digits)", draft.pin) { v -> draft = draft.copy(pin = v.filter { it.isDigit() }.take(8)) }
-        }
-
-        // ---- Formbricks ----
-        Section("Send responses to Formbricks (optional)") {
-            Text(
-                "Create a survey in Formbricks with a 4-point rating question (and optionally a single-select " +
-                    "question for the follow-up answers), then paste the IDs below. Responses are queued on this " +
-                    "device and sent when online. Scores: 4 = very happy … 1 = very unhappy.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Field("Formbricks URL", draft.formbricksHost) { draft = draft.copy(formbricksHost = it.trim()) }
-            Field("Environment ID", draft.environmentId) { draft = draft.copy(environmentId = it.trim()) }
-            Field("Survey ID", draft.surveyId) { draft = draft.copy(surveyId = it.trim()) }
-            Field("Rating question ID", draft.ratingQuestionId) { draft = draft.copy(ratingQuestionId = it.trim()) }
-            Field("Follow-up question ID (optional)", draft.reasonQuestionId) { draft = draft.copy(reasonQuestionId = it.trim()) }
-            Text(vm.syncStatus, style = MaterialTheme.typography.bodyMedium)
-            vm.stats?.let { Text("${it.pendingSync} responses waiting to be sent", style = MaterialTheme.typography.bodyMedium) }
-            OutlinedButton(onClick = vm::syncFromAdmin, enabled = vm.settings.syncEnabled) { Text("Sync now") }
         }
 
         // ---- Actions ----
@@ -189,12 +201,19 @@ private fun Section(title: String, content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun Field(label: String, value: String, singleLine: Boolean = true, onChange: (String) -> Unit) {
+private fun Field(
+    label: String,
+    value: String,
+    singleLine: Boolean = true,
+    secret: Boolean = false,
+    onChange: (String) -> Unit,
+) {
     OutlinedTextField(
         value = value,
         onValueChange = onChange,
         label = { Text(label) },
         singleLine = singleLine,
+        visualTransformation = if (secret) PasswordVisualTransformation() else VisualTransformation.None,
         minLines = if (singleLine) 1 else 4,
         modifier = Modifier
             .fillMaxWidth()

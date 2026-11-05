@@ -1,5 +1,6 @@
 package com.formbricks.kiosk
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -19,11 +20,23 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         WindowCompat.setDecorFitsSystemWindows(window, false)
+        applyDebugConfig(intent)
         setContent {
             KioskTheme {
                 KioskApp(vm)
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        applyDebugConfig(intent)
+    }
+
+    private fun applyDebugConfig(intent: Intent?) {
+        if (!BuildConfig.DEBUG || intent == null) return
+        val keys = listOf("fb_host", "fb_api_key", "fb_dataset_id", "fb_location", "fb_kiosk_id")
+        vm.applyDebugConfig(keys.mapNotNull { k -> intent.getStringExtra(k)?.let { k to it } }.toMap())
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {

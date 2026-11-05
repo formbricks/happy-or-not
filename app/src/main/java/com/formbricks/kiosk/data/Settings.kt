@@ -1,6 +1,7 @@
 package com.formbricks.kiosk.data
 
 import android.content.Context
+import java.util.UUID
 
 /** Everything an operator can change from the admin screen. */
 data class KioskSettings(
@@ -17,15 +18,16 @@ data class KioskSettings(
         "Something else",
     ),
     val pin: String = "1234",
-    // Optional sync to a Formbricks survey (Formbricks Cloud or self-hosted).
+    // Where the feedback goes: a Feedback Dataset in Formbricks (Cloud or self-hosted).
     val formbricksHost: String = "https://app.formbricks.com",
-    val environmentId: String = "",
-    val surveyId: String = "",
-    val ratingQuestionId: String = "",
-    val reasonQuestionId: String = "",
+    val apiKey: String = "",
+    val datasetId: String = "",
+    // Which kiosk this is. Sent with every record so dashboards can be split by location.
+    val locationName: String = "",
+    val kioskId: String = "",
 ) {
     val syncEnabled: Boolean
-        get() = environmentId.isNotBlank() && surveyId.isNotBlank() && ratingQuestionId.isNotBlank()
+        get() = formbricksHost.isNotBlank() && apiKey.isNotBlank() && datasetId.isNotBlank()
 }
 
 class SettingsStore(context: Context) {
@@ -44,10 +46,10 @@ class SettingsStore(context: Context) {
                 ?: d.reasons,
             pin = str("pin", d.pin),
             formbricksHost = str("formbricksHost", d.formbricksHost),
-            environmentId = str("environmentId", d.environmentId),
-            surveyId = str("surveyId", d.surveyId),
-            ratingQuestionId = str("ratingQuestionId", d.ratingQuestionId),
-            reasonQuestionId = str("reasonQuestionId", d.reasonQuestionId),
+            apiKey = str("apiKey", d.apiKey),
+            datasetId = str("datasetId", d.datasetId),
+            locationName = str("locationName", d.locationName),
+            kioskId = str("kioskId", "").ifBlank { defaultKioskId() },
         )
     }
 
@@ -60,10 +62,19 @@ class SettingsStore(context: Context) {
             .putString("reasons", s.reasons.joinToString("\n"))
             .putString("pin", s.pin)
             .putString("formbricksHost", s.formbricksHost)
-            .putString("environmentId", s.environmentId)
-            .putString("surveyId", s.surveyId)
-            .putString("ratingQuestionId", s.ratingQuestionId)
-            .putString("reasonQuestionId", s.reasonQuestionId)
+            .putString("apiKey", s.apiKey)
+            .putString("datasetId", s.datasetId)
+            .putString("locationName", s.locationName)
+            .putString("kioskId", s.kioskId.ifBlank { defaultKioskId() })
             .apply()
+    }
+
+    /** A random id created on first launch, so every kiosk is distinguishable out of the box. */
+    private fun defaultKioskId(): String {
+        val existing = prefs.getString("generatedKioskId", null)
+        if (existing != null) return existing
+        val id = "kiosk-" + UUID.randomUUID().toString().take(8)
+        prefs.edit().putString("generatedKioskId", id).apply()
+        return id
     }
 }

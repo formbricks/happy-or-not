@@ -30,6 +30,9 @@ data class StoredResponse(
     val score: Int,
     val reason: String?,
     val syncState: Int,
+    /** The question texts as shown when this answer was given. */
+    val question: String? = null,
+    val followUpQuestion: String? = null,
 )
 
 /** Counts are indexed by score - 1, so counts[3] is "very happy". */
@@ -42,7 +45,7 @@ data class Stats(
     val pendingSync: Int,
 )
 
-class ResponseDb(context: Context) : SQLiteOpenHelper(context, "responses.db", null, 1) {
+class ResponseDb(context: Context) : SQLiteOpenHelper(context, "responses.db", null, 2) {
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
@@ -52,7 +55,9 @@ class ResponseDb(context: Context) : SQLiteOpenHelper(context, "responses.db", n
                 ts INTEGER NOT NULL,
                 score INTEGER NOT NULL,
                 reason TEXT,
-                synced INTEGER NOT NULL DEFAULT 0
+                synced INTEGER NOT NULL DEFAULT 0,
+                question TEXT,
+                follow_up_question TEXT
             )
             """.trimIndent()
         )
@@ -60,18 +65,27 @@ class ResponseDb(context: Context) : SQLiteOpenHelper(context, "responses.db", n
         db.execSQL("CREATE INDEX idx_responses_synced ON responses(synced)")
     }
 
-    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        if (oldVersion < 2) {
+            db.execSQL("ALTER TABLE responses ADD COLUMN question TEXT")
+            db.execSQL("ALTER TABLE responses ADD COLUMN follow_up_question TEXT")
+        }
+    }
 
-    fun insert(score: Int, timestamp: Long = System.currentTimeMillis()): Long {
+    fun insert(score: Int, question: String, timestamp: Long = System.currentTimeMillis()): Long {
         val values = ContentValues().apply {
             put("ts", timestamp)
             put("score", score)
+            put("question", question)
         }
         return writableDatabase.insert("responses", null, values)
     }
 
-    fun setReason(id: Long, reason: String) {
-        val values = ContentValues().apply { put("reason", reason) }
+    fun setReason(id: Long, reason: String, followUpQuestion: String) {
+        val values = ContentValues().apply {
+            put("reason", reason)
+            put("follow_up_question", followUpQuestion)
+        }
         writableDatabase.update("responses", values, "id = ?", arrayOf(id.toString()))
     }
 
@@ -82,13 +96,13 @@ class ResponseDb(context: Context) : SQLiteOpenHelper(context, "responses.db", n
 
     /** Pending responses created before [olderThan], oldest first. */
     fun pending(olderThan: Long, limit: Int): List<StoredResponse> = query(
-        "SELECT id, ts, score, reason, synced FROM responses WHERE synced = ${SyncState.PENDING} " +
+        "SELECT id, ts, score, reason, synced, question, follow_up_question FROM responses WHERE synced = ${SyncState.PENDING} " +
             "AND ts < ? ORDER BY ts LIMIT $limit",
         arrayOf(olderThan.toString()),
     )
 
     fun all(): List<StoredResponse> =
-        query("SELECT id, ts, score, reason, synced FROM responses ORDER BY ts", emptyArray())
+        query("SELECT id, ts, score, reason, synced, question, follow_up_question FROM responses ORDER BY ts", emptyArray())
 
     fun clear() {
         writableDatabase.delete("responses", null, null)
@@ -174,6 +188,8 @@ class ResponseDb(context: Context) : SQLiteOpenHelper(context, "responses.db", n
                             score = c.getInt(2),
                             reason = if (c.isNull(3)) null else c.getString(3),
                             syncState = c.getInt(4),
+                            question = if (c.isNull(5)) null else c.getString(5),
+                            followUpQuestion = if (c.isNull(6)) null else c.getString(6),
                         )
                     )
                 }

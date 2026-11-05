@@ -65,7 +65,7 @@ class KioskViewModel(app: Application) : AndroidViewModel(app) {
         // Ignore taps while the follow-up or thank-you screen is showing:
         // this is the built-in cooldown that stops one person spamming a face.
         if (screen !is Screen.Survey) return
-        val id = db.insert(score)
+        val id = db.insert(score, settings.question)
         val s = settings
         if (s.followUpEnabled && s.reasons.isNotEmpty()) {
             screen = Screen.Reason(id, score)
@@ -77,7 +77,7 @@ class KioskViewModel(app: Application) : AndroidViewModel(app) {
 
     fun onReason(reason: String) {
         val current = screen as? Screen.Reason ?: return
-        db.setReason(current.responseId, reason)
+        db.setReason(current.responseId, reason, settings.followUpQuestion)
         showThanks(current.score)
     }
 
@@ -157,6 +157,29 @@ class KioskViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { syncNow(includeRecent = true) }
     }
 
+    fun testConnection() {
+        val s = settings
+        syncStatus = "Testing connection…"
+        viewModelScope.launch {
+            syncStatus = withContext(Dispatchers.IO) { FormbricksClient.testConnection(s) }
+        }
+    }
+
+    /**
+     * Debug builds only: lets CI and developers configure the Formbricks connection with
+     * `adb shell am start … --es fb_host … --es fb_api_key … --es fb_dataset_id …`.
+     */
+    fun applyDebugConfig(values: Map<String, String>) {
+        if (values.isEmpty()) return
+        var s = settings
+        values["fb_host"]?.let { s = s.copy(formbricksHost = it) }
+        values["fb_api_key"]?.let { s = s.copy(apiKey = it) }
+        values["fb_dataset_id"]?.let { s = s.copy(datasetId = it) }
+        values["fb_location"]?.let { s = s.copy(locationName = it) }
+        values["fb_kiosk_id"]?.let { s = s.copy(kioskId = it) }
+        saveSettings(s)
+    }
+
     // ---- Formbricks sync ---------------------------------------------------
 
     /**
@@ -166,7 +189,7 @@ class KioskViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun syncNow(includeRecent: Boolean = false) {
         val s = settings
         if (!s.syncEnabled) {
-            syncStatus = "Formbricks sync is off. Responses are stored on this device only."
+            syncStatus = "Not connected to Formbricks yet. Responses are stored on this device only."
             return
         }
         val cutoff = if (includeRecent) Long.MAX_VALUE
@@ -175,7 +198,7 @@ class KioskViewModel(app: Application) : AndroidViewModel(app) {
             var sent = 0
             var error: String? = null
             for (r in db.pending(olderThan = cutoff, limit = 100)) {
-                when (val result = FormbricksClient.send(s, r)) {
+                when (val result = FormbricksClient.send(s, r, BuildConfig.VERSION_NAME)) {
                     SendResult.Ok -> {
                         db.setSyncState(r.id, SyncState.SENT)
                         sent++
@@ -189,8 +212,8 @@ class KioskViewModel(app: Application) : AndroidViewModel(app) {
             sent to error
         }
         val time = DateFormat.getTimeInstance(DateFormat.SHORT).format(Date())
-        syncStatus = if (error == null) "Last sync $time: $sent sent."
-        else "Last sync $time: $sent sent, then failed: $error"
+        syncStatus = if (error == null) "Last sync $time: $sent responses sent."
+        else "Last sync $time: $sent responses sent, then failed. $error"
         if (screen is Screen.Admin) refreshStats()
     }
 

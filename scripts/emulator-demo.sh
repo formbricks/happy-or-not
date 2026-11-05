@@ -8,7 +8,17 @@ set -euo pipefail
 APK=${1:?usage: emulator-demo.sh <apk> [output-dir]}
 OUT=${2:-demo-output}
 PKG=com.formbricks.kiosk
+SCRIPTS=$(cd "$(dirname "$0")" && pwd)
 mkdir -p "$OUT"
+OUT=$(cd "$OUT" && pwd)
+
+# A mock of the Formbricks Feedback Records API on the host. The emulator reaches the
+# host as 10.0.2.2. It validates every record and logs the accepted ones.
+API_KEY=test-api-key
+DATASET=cmdemodataset0000000000001
+python3 "$SCRIPTS/mock-formbricks.py" "$OUT/feedback-records.jsonl" 8787 "$API_KEY" "$DATASET" > "$OUT/mock-formbricks.log" 2>&1 &
+MOCK_PID=$!
+trap 'kill $MOCK_PID 2>/dev/null || true' EXIT
 
 debug_dump() {
   echo "---- uiautomator dump ----"
@@ -60,7 +70,13 @@ adb shell settings put secure immersive_mode_confirmations confirmed || true
 adb shell screenrecord --time-limit 90 /sdcard/demo.mp4 &
 sleep 1
 
-adb shell am start -W -n "$PKG/.MainActivity"
+# Debug builds accept the Formbricks connection as launch extras.
+adb shell "am start -W -n $PKG/.MainActivity \
+  --es fb_host http://10.0.2.2:8787 \
+  --es fb_api_key $API_KEY \
+  --es fb_dataset_id $DATASET \
+  --es fb_location 'Hamburg Store Exit' \
+  --es fb_kiosk_id hamburg-exit-01"
 sleep 4
 # Dismiss the full-screen hint if it still showed up.
 if xy=$(center_of text "Got it" 2>/dev/null); then adb shell input tap $xy; sleep 1; fi
@@ -93,7 +109,34 @@ tap text "Unlock"
 sleep 3
 shot 05-admin
 
+# Scroll to the Formbricks connection, test it, and push everything queued.
+adb shell input swipe 1280 1500 1280 300 600
+sleep 1
+adb shell input swipe 1280 1500 1280 700 600
+sleep 1
+tap text "Test connection"
+sleep 3
+tap text "Sync now"
+sleep 6
+shot 06-admin-formbricks
+
 adb shell pkill -INT screenrecord || true
 sleep 3
 adb pull /sdcard/demo.mp4 "$OUT/demo.mp4" || echo "no screen recording available"
 ls -la "$OUT"
+
+echo "---- records received by the mock Formbricks API ----"
+cat "$OUT/mock-formbricks.log"
+# 4 answers, one with a follow-up reason: 4 rating records + 1 categorical record.
+python3 - "$OUT/feedback-records.jsonl" <<'PY'
+import json, sys
+records = [json.loads(l) for l in open(sys.argv[1]) if l.strip()]
+ratings = [r for r in records if r["field_id"] == "satisfaction" and r["field_type"] == "rating"]
+reasons = [r for r in records if r["field_id"] == "reason" and r["field_type"] == "categorical"]
+assert len(ratings) == 4, f"expected 4 rating records, got {len(ratings)}"
+assert sorted(r["value_number"] for r in ratings) == [2, 3, 4, 4], ratings
+assert [r["value_text"] for r in reasons] == ["Friendly staff"], reasons
+assert reasons[0]["submission_id"] in {r["submission_id"] for r in ratings}, "reason not grouped with its rating"
+assert all(r["source_type"] == "kiosk" and r["source_name"] == "Hamburg Store Exit" for r in records)
+print(f"OK: {len(records)} feedback records match the expected answers")
+PY
