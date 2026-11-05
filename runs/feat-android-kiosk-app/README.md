@@ -1,4 +1,4 @@
-# Emulator demo: feat/android-kiosk-app @ 277d00d
+# Emulator demo: feat/android-kiosk-app @ 90e7211
 
 ![01-survey.png](01-survey.png)
 ![02-follow-up.png](02-follow-up.png)
