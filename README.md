@@ -1,5 +1,12 @@
 # Formbricks Kiosk
 
+> [!WARNING]
+> **This is not an officially supported part of the Formbricks offering.**
+> Formbricks Kiosk is a community open-source project. It comes without support, SLAs or
+> guaranteed maintenance, and it is updated only occasionally. Use it at your own risk, and test it
+> before you rely on it. Issues and pull requests are welcome, but there's no promise they'll be
+> answered quickly.
+
 An open-source, one-tap feedback terminal for Android tablets. Put a tablet on a stand at a till,
 exit, reception desk or restroom, ask one question, and collect answers on a four-point smiley
 scale. Every answer flows straight into a [Formbricks](https://formbricks.com) Feedback Dataset, so
