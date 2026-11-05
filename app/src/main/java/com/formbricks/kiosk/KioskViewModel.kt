@@ -212,8 +212,11 @@ class KioskViewModel(app: Application) : AndroidViewModel(app) {
             sent to error
         }
         val time = DateFormat.getTimeInstance(DateFormat.SHORT).format(Date())
-        syncStatus = if (error == null) "Last sync $time: $sent responses sent."
-        else "Last sync $time: $sent responses sent, then failed. $error"
+        syncStatus = when {
+            error != null -> "Last sync $time: $sent answers sent, then failed. $error"
+            sent > 0 -> "Last sync $time: $sent answers sent. Everything is sent."
+            else -> "Last sync $time: everything is sent."
+        }
         if (screen is Screen.Admin) refreshStats()
     }
 

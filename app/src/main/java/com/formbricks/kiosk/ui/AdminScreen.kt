@@ -105,7 +105,7 @@ fun AdminScreen(vm: KioskViewModel) {
             Text(
                 "Every answer is written to a Formbricks Feedback Dataset as feedback records, so it shows up in " +
                     "your Formbricks dashboards next to all other feedback. Answers are queued on this device and " +
-                    "sent when online. Setup guide: github.com/formbricks/happy-or-not#send-feedback-to-formbricks",
+                    "sent when online. Setup manual: github.com/formbricks/happy-or-not#setup-manual",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
